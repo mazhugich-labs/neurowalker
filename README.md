@@ -65,19 +65,91 @@ The project aims to explore advanced control strategies in legged robotics using
 
 ## Simulation
 
-As for now [Hopf](https://en.wikipedia.org/wiki/Hopf_bifurcation)-based controller is available.
+### Hopf Network Controller
 
-To run the simulation paste:
+The controller is based on **phase-coupled oscillators**.  
+Each oscillator generates a smooth periodic signal representing the leg trajectory. Coupling between oscillators enforces coordination patterns (gaits), and parameters control the amplitude, frequency, and phase relationships.
+
+#### 1. Simulation & Integration
+- **`--dt`**: Controller update rate (seconds).  
+- **`--integration-method`**: Integration method for oscillator updates (`"euler"` for speed, `"rk4"` for accuracy).
+
+#### 2. Oscillator Parameters
+- **`--a`**: Convergence factor mean — how fast oscillators stabilize to target motion.  
+- **`--default-alpha`**: Initial oscillator phases in radians, defining the starting gait (e.g., `(0, π, π, 0, 0, π)` for tripod gait).
+
+#### 3. Amplitude Modulation (μ)
+- **`--mu-min`** / **`--mu-max`**: Minimum and maximum oscillation amplitude, affecting step length.
+
+#### 4. Frequency Modulation (ω)
+- **`--w-min`** / **`--w-max`**: Minimum and maximum gait frequency (rad/s).
+
+#### 5. Coupling Weights
+- **`--self-weight`**: Self-coupling (oscillator stiffness).  
+- **`--in-group-weight`**: Coupling between oscillators in the same group.  
+- **`--of-group-weight`**: Coupling between oscillators in different groups.  
+- **`--threshold`**: Minimal phase difference for grouping oscillators.
+
+#### 6. Computation & Timing
+- **`--device`**: `"cpu"` or `"cuda"` for running on CPU or GPU.  
+- **`--simulation-time`**: Total simulation time in seconds.
+
+#### 7. Random Modulation
+- **`--enable-random-modulation`**: Adds variability for robustness testing.
+
+---
+
+### Quick Reference Table
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--dt` | `0.02` | Controller update rate (seconds). |
+| `--integration-method` | `"euler"` | Integration method: `"euler"` or `"rk4"`. |
+| `--a` | `10` | Convergence factor mean. |
+| `--default-alpha` | `(0, π, π, 0, 0, π)` | Initial phases for oscillators (radians). |
+| `--mu-min` | `1.0` | Minimum amplitude. |
+| `--mu-max` | `4.0` | Maximum amplitude. |
+| `--w-min` | `0.0` | Minimum frequency (rad/s). |
+| `--w-max` | `1.6 × π` | Maximum frequency (rad/s). |
+| `--self-weight` | `0.0` | Self-coupling weight. |
+| `--in-group-weight` | `1.0` | Same-group coupling weight. |
+| `--of-group-weight` | `0.0` | Cross-group coupling weight. |
+| `--threshold` | `0.0` | Phase difference threshold (rad). |
+| `--device` | `"cpu"` | Compute device. |
+| `--simulation-time` | `10.0` | Simulation duration (seconds). |
+| `--enable-random-modulation` | *disabled* | Enables random modulation. |
+
+---
+
+### Example Command to Run the Simulation
 
 ```bash
-python source/neurowalker/neurowalker/test/controllers/test_low_level_controller.py # --random-command to apply random modulation to the network
+python source/neurowalker/neurowalker/test/controllers/test_hopf_network_controller.py \
+    --dt 0.02 \
+    --integration-method rk4 \
+    --a 12 \
+    --default-alpha 0 3.1416 3.1416 0 0 3.1416 \
+    --mu-min 1.0 \
+    --mu-max 9.5 \
+    --w-min 0.2 \
+    --w-max 5.0 \
+    --in-group-weight 1.0 \
+    --of-group-weight 0.1 \
+    --simulation-time 10.0 \
+    --device cuda \
+    --enable-random-modulation
 ```
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_no_modulation.png "Hopf-based controller without modulation")
+This will simulate a tripod gait for 10 seconds, using GPU acceleration (--device cuda) and random modulation parameter variations.
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_random_modulation.png "Hopf-based controller with random modulation")
+### Produced Images
 
-You can find controllers implementation here:
+![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_no_modulation.png "Hopf Network Controller without modulation")
+
+![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_random_modulation.png "Hopf Network Controller with random modulation")
+
+### Implementation
+You can find Hopf Network Controller source files here:
 
 ```bash
 .
@@ -85,11 +157,12 @@ You can find controllers implementation here:
     └── neurowalker
         └── neurowalker
             └── controllers
-                ├── __init__.py
-                └── low_level
-                    ├── cpg_hopf_cfg.py
-                    ├── cpg_hopf.py
-                    └── __init__.py
+                ├── cpg
+                │   ├── hopf_network_controller_cfg.py
+                │   ├── hopf_network_controller.py
+                │   ├── __init__.py
+                │   └── utils.py
+                └── __init__.py
 ```
 
 ## Acknowledgement

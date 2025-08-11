@@ -1,2 +1,0 @@
-from .cpg_hopf_cfg import HopfNetworkControllerCfg
-from .cpg_hopf import HopfNetworkController

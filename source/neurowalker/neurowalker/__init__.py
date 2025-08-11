@@ -12,3 +12,4 @@ from .tasks import *
 
 # Register custom modules
 from .controllers import *
+from .utils import *
