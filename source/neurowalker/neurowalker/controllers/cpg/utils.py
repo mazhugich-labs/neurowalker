@@ -14,7 +14,7 @@ def calc_m(
     threshold: float,
     device: str,
 ) -> torch.Tensor:
-    """Calculate coupling weight matrix based on the inter-oscillator phase offset matrix"""
+    """Calculate coupling weight matrix based on the inter-oscillator phase offsets"""
 
     weights = torch.full_like(psi, of_group_weight, device=device)
     weights[(psi >= -threshold) & (psi <= threshold)] = in_group_weight

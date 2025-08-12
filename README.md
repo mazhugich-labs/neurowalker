@@ -97,6 +97,9 @@ Each oscillator generates a smooth periodic signal representing the leg trajecto
 #### 7. Random Modulation
 - **`--enable-random-modulation`**: Adds variability for robustness testing.
 
+#### 8. Save Produced Image
+- **`--filename`**: Allows to save produced image.
+
 ---
 
 ### Quick Reference Table
@@ -104,7 +107,7 @@ Each oscillator generates a smooth periodic signal representing the leg trajecto
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `--dt` | `0.02` | Controller update rate (seconds). |
-| `--integration-method` | `"euler"` | Integration method: `"euler"` or `"rk4"`. |
+| `--integration-method` | `"heun"` | Integration method: `"heun"` or `"rk4"`. |
 | `--a` | `10` | Convergence factor mean. |
 | `--default-alpha` | `(0, π, π, 0, 0, π)` | Initial phases for oscillators (radians). |
 | `--mu-min` | `1.0` | Minimum amplitude. |
@@ -118,6 +121,7 @@ Each oscillator generates a smooth periodic signal representing the leg trajecto
 | `--device` | `"cpu"` | Compute device. |
 | `--simulation-time` | `10.0` | Simulation duration (seconds). |
 | `--enable-random-modulation` | *disabled* | Enables random modulation. |
+| `--filename` | *None* | Filename to save image to. |
 
 ---
 
@@ -137,19 +141,47 @@ python source/neurowalker/neurowalker/test/controllers/test_hopf_network_control
     --of-group-weight 0.1 \
     --simulation-time 10.0 \
     --device cuda \
-    --enable-random-modulation
+    --enable-random-modulation \
+    --filename hopf_network_controller_random_modulation
 ```
 
 This will simulate a tripod gait for 10 seconds, using GPU acceleration (--device cuda) and random modulation parameter variations.
 
-### Produced Images
+### Example of Command Line Output
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_no_modulation.png "Hopf Network Controller without modulation")
+```bash
+[✓] Starting simulation with the following parameters:
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/low_level_controller_random_modulation.png "Hopf Network Controller with random modulation")
+dt                        : 0.02
+integration_method        : rk4
+a                         : 12.0
+default_alpha             : [0.0, 3.1416, 3.1416, 0.0, 0.0, 3.1416]
+mu_min                    : 1.0
+mu_max                    : 9.5
+w_min                     : 0.2
+w_max                     : 5.0
+self_weight               : 0.0
+in_group_weight           : 1.0
+of_group_weight           : 0.1
+threshold                 : 0.0
+device                    : cuda
+simulation_time           : 10.0
+enable_random_modulation  : True
+filename                  : hopf_network_controller_random_modulation
+
+[✓] Simulation (500 steps, dt=0.02s) completed. Average controller step time: 0.915 ms
+
+[✓] Saving image to: source/neurowalker/docs/images/hopf_network_controller_random_modulation.png
+```
+
+### Example of Images Produced by Hopf Network Controller (no/random modulation)
+
+![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_no_modulation.png "Hopf Network Controller no modulation")
+
+![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_random_modulation.png "Hopf Network Controller random modulation")
 
 ### Implementation
-You can find Hopf Network Controller source files here:
+You can find Hopf Network Controller source code here:
 
 ```bash
 .
@@ -164,6 +196,10 @@ You can find Hopf Network Controller source files here:
                 │   └── utils.py
                 └── __init__.py
 ```
+
+### Pattern Formation Controller
+
+
 
 ## Acknowledgement
 

@@ -17,6 +17,10 @@ from neurowalker.controllers.cpg.hopf import (
     HopfNetworkControllerCfg,
     HopfNetworkController,
 )
+from neurowalker.controllers.pf import (
+    PatternFormationControllerCfg,
+    PatternFormationController,
+)
 
 
 def parse_args():
@@ -116,6 +120,54 @@ def parse_args():
         help="Enables random modulation applied to the controller when set. Disabled by default",
     )
     parser.add_argument(
+        "--d-step-min",
+        type=float,
+        default=0.0,
+        help="Minimal step size in meters. Default to 0.0 m",
+    )
+    parser.add_argument(
+        "--d-step-max",
+        type=float,
+        default=0.07,
+        help="Maximal step size in meters. Default to 0.07 m",
+    )
+    parser.add_argument(
+        "-h-min",
+        type=float,
+        default=0.07,
+        help="Minimal robot height in meters. Default to 0.07 m",
+    )
+    parser.add_argument(
+        "-h-max",
+        type=float,
+        default=0.12,
+        help="Maximal robot height in meters. Default to 0.12 m",
+    )
+    parser.add_argument(
+        "--g-c-min",
+        type=float,
+        default=0.02,
+        help="Minimal foot tip ground clearance in meters. Default to 0.02 m",
+    )
+    parser.add_argument(
+        "--g-c-max",
+        type=float,
+        default=0.07,
+        help="Maximal foot tip ground clearance in meters. Default to 0.07 m",
+    )
+    parser.add_argument(
+        "--g-p-min",
+        type=float,
+        default=0.0,
+        help="Minimal foot tip ground penetration in meters. Default to 0.0 m",
+    )
+    parser.add_argument(
+        "--g-p-max",
+        type=float,
+        default=0.02,
+        help="Maximal foot tip ground penetration in meters. Default to 0.02 m",
+    )
+    parser.add_argument(
         "--filename",
         type=str,
         default=None,
@@ -142,25 +194,32 @@ def make_command(enable_random_modulation: bool, net_size: int, device: str):
 
 def plot_hist(
     simualtion_time: float,
-    r_hist: torch.Tensor,
-    phi_hist: torch.Tensor,
-    d_r_hist: torch.Tensor,
-    d_phi_hist: torch.Tensor,
+    X_hist: torch.Tensor,
+    Y_hist: torch.Tensor,
+    Z_hist: torch.Tensor,
+    d_step: float,
+    h: float,
+    g_c: float,
+    g_p: float,
     w_max: float,
     enable_random_modulation: bool,
     filename: str,
 ):
-    x_axis = torch.linspace(0, simualtion_time, r_hist.shape[0])
-    num_osc = r_hist.shape[1]
+    x_axis = torch.linspace(0, simualtion_time, X_hist.shape[0])
+    num_osc = X_hist.shape[1]
 
-    mosaic = (("r", "d_r"), ("phi", "d_phi"))
+    mosaic = (("X",), ("Y",), ("Z",))
     fig, axes = plt.subplot_mosaic(mosaic, figsize=(20, 10), layout="constrained")
 
     var_dict = {
-        "r": ("Amplitude", "$r$", r_hist, axes["r"]),
-        "phi": ("Phase", "$\\phi$", phi_hist, axes["phi"]),
-        "d_r": ("Velocity", "$\\dot{r}$", d_r_hist, axes["d_r"]),
-        "d_phi": ("Frequency", "$\\dot{\\phi}$", d_phi_hist, axes["d_phi"]),
+        "X": (f"Foot tip X coordinate (d_step: {d_step:.6f} m)", "$X$", X_hist, axes["X"]),
+        "Y": (f"Foot tip Y coordinate (d_step: {d_step:.6f} m)", "$Y$", Y_hist, axes["Y"]),
+        "Z": (
+            f"Foot tip Z coordinate (h: {h:.6f} m, g_c: {g_c:.6f} m, g_p: {g_p:.6f} m)",
+            "$Z$",
+            Z_hist,
+            axes["Z"],
+        ),
     }
 
     for var_name, (title, label, data, ax) in var_dict.items():
@@ -172,7 +231,7 @@ def plot_hist(
         ax.grid(True)
 
     fig.suptitle(
-        f"CPG controller simulation (modulation: {enable_random_modulation}, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
+        f"PF controller simulation (modulation: {enable_random_modulation}, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
         fontsize=16,
     )
 
@@ -191,7 +250,7 @@ def main():
     for key, value in vars(args_cli).items():
         print(f"{key:25} : {value}")
 
-    cfg = HopfNetworkControllerCfg(
+    cpg_cfg = HopfNetworkControllerCfg(
         dt=args_cli.dt,
         integration_method=args_cli.integration_method,
         a=args_cli.a,
@@ -206,47 +265,71 @@ def main():
             "threshold": args_cli.threshold,
         },
     )
-    controller = HopfNetworkController(cfg, num_envs=1, device=args_cli.device)
+    cpg_controller = HopfNetworkController(
+        cfg=cpg_cfg, num_envs=1, device=args_cli.device
+    )
+
+    pf_cfg = PatternFormationControllerCfg(
+        d_step_min=args_cli.d_step_min,
+        d_step_max=args_cli.d_step_max,
+        h_min=args_cli.h_min,
+        h_max=args_cli.h_max,
+        g_c_min=args_cli.g_c_min,
+        g_c_max=args_cli.g_c_max,
+        g_p_min=args_cli.g_p_min,
+        g_p_max=args_cli.g_p_max,
+    )
+    pf_controller = PatternFormationController(
+        cfg=pf_cfg,
+        num_envs=cpg_controller.num_envs,
+        device=cpg_controller.device,
+    )
 
     w_max = (
-        torch.ones((controller.num_envs, 1), device=controller.device) * args_cli.w_max
+        torch.ones((cpg_controller.num_envs, 1), device=cpg_controller.device)
+        * args_cli.w_max
     )
-    num_iterations = int(args_cli.simulation_time / cfg.dt)
+    num_iterations = int(args_cli.simulation_time / cpg_cfg.dt)
 
-    r_hist = torch.empty((num_iterations, controller.net_size), device="cpu")
-    phi_hist = torch.empty_like(r_hist)
-    d_r_hist = torch.empty_like(r_hist)
-    d_phi_hist = torch.empty_like(phi_hist)
+    X_hist = torch.empty((num_iterations, cpg_controller.net_size), device="cpu")
+    Y_hist = torch.empty_like(X_hist)
+    Z_hist = torch.empty_like(X_hist)
 
     exec_time = 0
     for i in range(num_iterations):
         mu, w, omega_cmd = make_command(
             args_cli.enable_random_modulation,
-            controller.net_size,
-            controller.device,
+            cpg_controller.net_size,
+            cpg_controller.device,
         )
 
-        r_hist[i] = controller.r.detach().squeeze(0).cpu()
-        phi_hist[i] = controller.phi.detach().squeeze(0).cpu()
-        d_r_hist[i] = controller.d_r.detach().squeeze(0).cpu()
-        d_phi_hist[i] = controller.d_phi.detach().squeeze(0).cpu()
+        r, phi, xi = (
+            cpg_controller.r.squeeze(0),
+            cpg_controller.phi.squeeze(0),
+            cpg_controller.xi.squeeze(0),
+        )
 
         start_time = time.time_ns()
-        controller.step(mu, w, w_max, omega_cmd)
+        X_hist[i], Y_hist[i], Z_hist[i] = pf_controller.solve_desired_pose(r, phi, xi)
         exec_time += (time.time_ns() - start_time) / 1e6
+
+        cpg_controller.step(mu, w, w_max, omega_cmd)
 
     exec_time /= num_iterations
 
     print(
-        f"\n[✓] Simulation ({num_iterations} steps, dt={cfg.dt}s) completed. Average controller step time: {exec_time:.3f} ms"
+        f"\n[✓] Simulation ({num_iterations} steps, dt={cpg_cfg.dt}s) completed. Average controller step time: {exec_time:.3f} ms"
     )
 
     plot_hist(
         simualtion_time=args_cli.simulation_time,
-        r_hist=r_hist,
-        phi_hist=phi_hist,
-        d_r_hist=d_r_hist,
-        d_phi_hist=d_phi_hist,
+        X_hist=X_hist,
+        Y_hist=Y_hist,
+        Z_hist=Z_hist,
+        d_step=pf_controller.d_step.item(),
+        h=pf_controller.h.item(),
+        g_c=pf_controller.g_c.item(),
+        g_p=pf_controller.g_p.item(),
         w_max=w_max.item(),
         enable_random_modulation=args_cli.enable_random_modulation,
         filename=args_cli.filename,
