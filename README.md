@@ -102,7 +102,7 @@ Each oscillator generates a smooth periodic signal representing the leg trajecto
 
 ---
 
-### Quick Reference Table
+#### Quick Reference Table
 
 | Argument | Default | Description |
 |----------|---------|-------------|
@@ -125,7 +125,7 @@ Each oscillator generates a smooth periodic signal representing the leg trajecto
 
 ---
 
-### Example Command to Run the Simulation
+#### Example Command to Run the Simulation
 
 ```bash
 python source/neurowalker/neurowalker/test/controllers/test_hopf_network_controller.py \
@@ -147,7 +147,7 @@ python source/neurowalker/neurowalker/test/controllers/test_hopf_network_control
 
 This will simulate a tripod gait for 10 seconds, using GPU acceleration (--device cuda) and random modulation parameter variations.
 
-### Example of Command Line Output
+#### Example of Command Line Output
 
 ```bash
 [✓] Starting simulation with the following parameters:
@@ -174,13 +174,13 @@ filename                  : hopf_network_controller_random_modulation
 [✓] Saving image to: source/neurowalker/docs/images/hopf_network_controller_random_modulation.png
 ```
 
-### Example of Images Produced by Hopf Network Controller (no/random modulation)
+#### Example of Images Produced by Hopf Network Controller (no/random modulation)
 
 ![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_no_modulation.png "Hopf Network Controller no modulation")
 
 ![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_random_modulation.png "Hopf Network Controller random modulation")
 
-### Implementation
+#### Implementation
 You can find Hopf Network Controller source code here:
 
 ```bash
@@ -199,7 +199,7 @@ You can find Hopf Network Controller source code here:
 
 ### Pattern Formation Controller
 
-
+- [ ] TODO
 
 ## Acknowledgement
 
