@@ -6,7 +6,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class HopfNetworkControllerCfg:
-    """Configuration for Hopf network controller"""
+    """Configuration for Hopf Network Controller"""
 
     dt: float = 0.02
     """Controller update rate in seconds"""
@@ -20,19 +20,19 @@ class HopfNetworkControllerCfg:
     default_alpha: Sequence[float] = (0, math.pi, math.pi, 0, 0, math.pi)
     """Oscillators default phase offsets in radians"""
 
-    mu_min: float = 1.0
-    mu_max: float = 4.0
-    """Amplitude modulation parameter bounds"""
+    mu_min: float = 0.0
+    mu_max: float = 2.0
+    """Amplitude modulation parameter bounds. From [-1, 1] to [mu_min, mu_max]"""
 
     w_min: float = 0.0
-    """Lower bound for frequency modulation parameter. Upper bound is dynamically modulated"""
+    """Lower bound for frequency modulation parameter. Upper bound is dynamically modulated. From [-1, 1] to [w_min, w_max]"""
 
-    omega_min: float = -math.pi / 18
-    omega_max: float = math.pi / 18
-    """Robot heading modulation parameter bounds"""
+    omega_cmd_min: float = -math.pi
+    omega_cmd_max: float = math.pi
+    """Robot heading modulation parameter bounds. From [-1, 1] to [omega_cmd_min, omega_cmd_max]"""
 
-    tau: float = 0.05
-    """Time constans of the low-pass/follower filter for the robot heading modulation"""
+    omega_cmd_tau: float = 0.25
+    """Time constans of the 1'st order low-pass/follower filter to gradually change robot heading. Low values make the system respond faster"""
 
     coupling_cfg: dict[str, float] = {
         "self_weight": 0.0,  # Coupling weight for an oscillator with itself (self-coupling)
@@ -46,9 +46,10 @@ class HopfNetworkControllerCfg:
         if any(
             (
                 self.dt <= 0,
-                self.tau <= 0,
+                self.a <= 0,
+                self.omega_cmd_tau <= 0,
                 self.mu_min > self.mu_max,
-                self.omega_min > self.omega_max,
+                self.omega_cmd_min > self.omega_cmd_max,
             )
         ):
             raise ValueError("Invalid configuration")

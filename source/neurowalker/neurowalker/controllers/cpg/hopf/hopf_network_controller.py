@@ -8,6 +8,10 @@ from neurowalker.controllers.cpg.utils import calc_psi, calc_m
 
 
 class HopfNetworkController:
+    """Definition of a Hopf CPG Network Controller"""
+
+    cfg: HopfNetworkControllerCfg
+
     def __init__(
         self, cfg: HopfNetworkControllerCfg, num_envs: int, device: str
     ) -> None:
@@ -58,14 +62,16 @@ class HopfNetworkController:
         self._v = torch.zeros(self.num_envs, self.net_size, device=self.device)
         self._theta = torch.zeros(self.num_envs, self.net_size, device=self.device)
         self._alpha = self._default_alpha.repeat(self.num_envs, 1)
-        self._xi = torch.zeros(self.num_envs, 1, device=self.device)
         self._omega = torch.zeros(self.num_envs, 1, device=self.device)
-        self._d_r = torch.zeros(self.num_envs, self.net_size, device=self.device)
-        self._d_v = torch.zeros(self.num_envs, self.net_size, device=self.device)
-        self._d_theta = torch.zeros(self.num_envs, self.net_size, device=self.device)
-        self._d_alpha = torch.zeros(self.num_envs, self.net_size, device=self.device)
-        self._d_xi = torch.zeros(self.num_envs, 1, device=self.device)
-        self._d_omega = torch.zeros(self.num_envs, 1, device=self.device)
+        self._delta_r = torch.zeros(self.num_envs, self.net_size, device=self.device)
+        self._delta_v = torch.zeros(self.num_envs, self.net_size, device=self.device)
+        self._delta_theta = torch.zeros(
+            self.num_envs, self.net_size, device=self.device
+        )
+        self._delta_alpha = torch.zeros(
+            self.num_envs, self.net_size, device=self.device
+        )
+        self._delta_omega = torch.zeros(self.num_envs, 1, device=self.device)
 
     def _fit_mu(self, mu: torch.Tensor) -> torch.Tensor:
         """Fit amplitude modulation parameter from [-1, 1] to [self.cfg.mu_min, self.cfg.mu_max]"""
@@ -75,10 +81,24 @@ class HopfNetworkController:
         """Fit frequency modulation parameter from [-1, 1] to [self.cfg.w_min, w_max]"""
         return self.cfg.w_min + (w + 1) / 2 * (w_max - self.cfg.w_min)
 
-    def _fit_omega(self, omega: torch.Tensor) -> torch.Tensor:
+    def _fit_omega_cmd(self, omega_cmd: torch.Tensor) -> torch.Tensor:
         """Fit robot heading modulation parameter"""
-        return self.cfg.omega_min + (omega + 1) / 2 * (
-            self.cfg.omega_max - self.cfg.omega_min
+        return self.cfg.omega_cmd_min + (omega_cmd + 1) / 2 * (
+            self.cfg.omega_cmd_max - self.cfg.omega_cmd_min
+        )
+
+    def _fit_modulation_params(
+        self,
+        mu: torch.Tensor,
+        w: torch.Tensor,
+        w_max: torch.Tensor,
+        omega_cmd: torch.Tensor,
+    ):
+        return (
+            self.cfg.mu_min + (mu + 1) / 2 * (self.cfg.mu_max - self.cfg.mu_min),
+            self.cfg.w_min + (w + 1) / 2 * (w_max - self.cfg.w_min),
+            self.cfg.omega_cmd_min
+            + (omega_cmd + 1) / 2 * (self.cfg.omega_cmd_max - self.cfg.omega_cmd_min),
         )
 
     def _calc_coupling_term(self, r: torch.Tensor, alpha: torch.Tensor) -> torch.Tensor:
@@ -101,17 +121,16 @@ class HopfNetworkController:
         omega_cmd: torch.Tensor,
     ) -> tuple[torch.Tensor]:
         """Compute state derivatives"""
-        d_r = v
-        d_v = self.cfg.a**2 / 4 * (self._fit_mu(mu) - r) - self.cfg.a * v
-        d_theta = self._fit_w(w, w_max)
-        d_alpha = w_max / 2 + self._calc_coupling_term(r, alpha)
+        f_mu, f_w, f_omega_cmd = self._fit_modulation_params(mu, w, w_max, omega_cmd)
+        delta_r = v
+        delta_v = self.cfg.a**2 / 4 * (f_mu - r) - self.cfg.a * v
+        delta_theta = f_w
+        delta_alpha = w_max / 2 + self._calc_coupling_term(r, alpha)
 
-        # Robot heading angular velocity
-        d_xi = omega
-        # First-order low-pass/follower filter
-        d_omega = 1 / self.cfg.tau * (self._fit_omega(omega_cmd) - omega)
+        # First-order low-pass/follower filter for robot heading
+        delta_omega = (f_omega_cmd - omega) / self.cfg.omega_cmd_tau
 
-        return d_r, d_v, d_theta, d_alpha, d_xi, d_omega
+        return delta_r, delta_v, delta_theta, delta_alpha, delta_omega
 
     def _integrate_heun(
         self,
@@ -121,30 +140,29 @@ class HopfNetworkController:
         omega_cmd: torch.Tensor,
     ) -> tuple[torch.Tensor]:
         """Improved Euler's numerical integration method"""
-        d_r2, d_v2, d_theta2, d_alpha2, d_xi2, d_omega2 = self._calc_delta_state(
-            self._r, self._v, self._alpha, self._omega, mu, w, w_max, omega_cmd
+        delta_r2, delta_v2, delta_theta2, delta_alpha2, delta_omega2 = (
+            self._calc_delta_state(
+                self._r, self._v, self._alpha, self._omega, mu, w, w_max, omega_cmd
+            )
         )
 
-        d_r_avg = (self._d_r + d_r2) / 2
-        d_v_avg = (self._d_v + d_v2) / 2
-        d_theta_avg = (self._d_theta + d_theta2) / 2
-        d_alpha_avg = (self._d_alpha + d_alpha2) / 2
-        d_xi_avg = (self._d_xi + d_xi2) / 2
-        d_omega_avg = (self._d_omega + d_omega2) / 2
+        delta_r_avg = (self._delta_r + delta_r2) / 2
+        delta_v_avg = (self._delta_v + delta_v2) / 2
+        delta_theta_avg = (self._delta_theta + delta_theta2) / 2
+        delta_alpha_avg = (self._delta_alpha + delta_alpha2) / 2
+        delta_omega_avg = (self._delta_omega + delta_omega2) / 2
 
         return (
-            self._r + d_r_avg * self.cfg.dt,
-            self._v + d_v_avg * self.cfg.dt,
-            torch.remainder(self._theta + d_theta_avg * self.cfg.dt, 2 * math.pi),
-            torch.remainder(self._alpha + d_alpha_avg * self.cfg.dt, 2 * math.pi),
-            torch.remainder(self._xi + d_xi_avg * self.cfg.dt, 2 * math.pi),
-            self._omega + d_omega_avg * self.cfg.dt,
-            d_r_avg,
-            d_v_avg,
-            d_theta_avg,
-            d_alpha_avg,
-            d_xi_avg,
-            d_omega_avg,
+            self._r + delta_r_avg * self.cfg.dt,
+            self._v + delta_v_avg * self.cfg.dt,
+            torch.remainder(self._theta + delta_theta_avg * self.cfg.dt, 2 * math.pi),
+            torch.remainder(self._alpha + delta_alpha_avg * self.cfg.dt, 2 * math.pi),
+            self._omega + delta_omega_avg * self.cfg.dt,
+            delta_r_avg,
+            delta_v_avg,
+            delta_theta_avg,
+            delta_alpha_avg,
+            delta_omega_avg,
         )
 
     def _integrate_rk4(
@@ -155,57 +173,62 @@ class HopfNetworkController:
         omega_cmd: torch.Tensor,
     ) -> tuple[torch.Tensor]:
         """Runge-Kutta 4'th order numerical integration method"""
-        d_r1, d_v1, d_theta1, d_alpha1, d_xi1, d_omega1 = self._calc_delta_state(
-            self._r, self._v, self._alpha, self._omega, mu, w, w_max, omega_cmd
+        delta_r1, delta_v1, delta_theta1, delta_alpha1, delta_omega1 = (
+            self._calc_delta_state(
+                self._r, self._v, self._alpha, self._omega, mu, w, w_max, omega_cmd
+            )
         )
         r2, v2, alpha2, omega2 = (
-            self._r + d_r1 * self.cfg.dt / 2,
-            self._v + d_v1 * self.cfg.dt / 2,
-            self._alpha + d_alpha1 * self.cfg.dt / 2,
-            self._omega + d_omega1 * self.cfg.dt / 2,
+            self._r + delta_r1 * self.cfg.dt / 2,
+            self._v + delta_v1 * self.cfg.dt / 2,
+            self._alpha + delta_alpha1 * self.cfg.dt / 2,
+            self._omega + delta_omega1 * self.cfg.dt / 2,
         )
-        d_r2, d_v2, d_theta2, d_alpha2, d_xi2, d_omega2 = self._calc_delta_state(
-            r2, v2, alpha2, omega2, mu, w, w_max, omega_cmd
+        delta_r2, delta_v2, delta_theta2, delta_alpha2, delta_omega2 = (
+            self._calc_delta_state(r2, v2, alpha2, omega2, mu, w, w_max, omega_cmd)
         )
         r3, v3, alpha3, omega3 = (
-            self._r + d_r2 * self.cfg.dt / 2,
-            self._v + d_v2 * self.cfg.dt / 2,
-            self._alpha + d_alpha2 * self.cfg.dt / 2,
-            self._omega + d_omega2 * self.cfg.dt / 2,
+            self._r + delta_r2 * self.cfg.dt / 2,
+            self._v + delta_v2 * self.cfg.dt / 2,
+            self._alpha + delta_alpha2 * self.cfg.dt / 2,
+            self._omega + delta_omega2 * self.cfg.dt / 2,
         )
-        d_r3, d_v3, d_theta3, d_alpha3, d_xi3, d_omega3 = self._calc_delta_state(
-            r3, v3, alpha3, omega3, mu, w, w_max, omega_cmd
+        delta_r3, delta_v3, delta_theta3, delta_alpha3, delta_omega3 = (
+            self._calc_delta_state(r3, v3, alpha3, omega3, mu, w, w_max, omega_cmd)
         )
         r4, v4, alpha4, omega4 = (
-            self._r + d_r3 * self.cfg.dt,
-            self._v + d_v3 * self.cfg.dt,
-            self._alpha + d_alpha3 * self.cfg.dt,
-            self._omega + d_omega3 * self.cfg.dt,
+            self._r + delta_r3 * self.cfg.dt,
+            self._v + delta_v3 * self.cfg.dt,
+            self._alpha + delta_alpha3 * self.cfg.dt,
+            self._omega + delta_omega3 * self.cfg.dt,
         )
-        d_r4, d_v4, d_theta4, d_alpha4, d_xi4, d_omega4 = self._calc_delta_state(
-            r4, v4, alpha4, omega4, mu, w, w_max, omega_cmd
+        delta_r4, delta_v4, delta_theta4, delta_alpha4, delta_omega4 = (
+            self._calc_delta_state(r4, v4, alpha4, omega4, mu, w, w_max, omega_cmd)
         )
 
-        d_r_avg = (d_r1 + 2 * d_r2 + 2 * d_r3 + d_r4) / 6
-        d_v_avg = (d_v1 + 2 * d_v2 + 2 * d_v3 + d_v4) / 6
-        d_theta_avg = (d_theta1 + 2 * d_theta2 + 2 * d_theta3 + d_theta4) / 6
-        d_alpha_avg = (d_alpha1 + 2 * d_alpha2 + 2 * d_alpha3 + d_alpha4) / 6
-        d_xi_avg = (d_xi1 + 2 * d_xi2 + 2 * d_xi3 + d_xi4) / 6
-        d_omega_avg = (d_omega1 + 2 * d_omega2 + 2 * d_omega3 + d_omega4) / 6
+        delta_r_avg = (delta_r1 + 2 * delta_r2 + 2 * delta_r3 + delta_r4) / 6
+        delta_v_avg = (delta_v1 + 2 * delta_v2 + 2 * delta_v3 + delta_v4) / 6
+        delta_theta_avg = (
+            delta_theta1 + 2 * delta_theta2 + 2 * delta_theta3 + delta_theta4
+        ) / 6
+        delta_alpha_avg = (
+            delta_alpha1 + 2 * delta_alpha2 + 2 * delta_alpha3 + delta_alpha4
+        ) / 6
+        delta_omega_avg = (
+            delta_omega1 + 2 * delta_omega2 + 2 * delta_omega3 + delta_omega4
+        ) / 6
 
         return (
-            self._r + d_r_avg * self.cfg.dt / 6,
-            self._v + d_v_avg * self.cfg.dt,
-            self._theta + d_theta_avg * self.cfg.dt,
-            self._alpha + d_alpha_avg * self.cfg.dt,
-            torch.remainder(self._xi + d_xi_avg * self.cfg.dt, 2 * math.pi),
-            self._omega + d_omega_avg * self.cfg.dt,
-            d_r_avg,
-            d_v_avg,
-            d_theta_avg,
-            d_alpha_avg,
-            d_xi_avg,
-            d_omega_avg,
+            self._r + delta_r_avg * self.cfg.dt,
+            self._v + delta_v_avg * self.cfg.dt,
+            torch.remainder(self._theta + delta_theta_avg * self.cfg.dt, 2 * math.pi),
+            torch.remainder(self._alpha + delta_alpha_avg * self.cfg.dt, 2 * math.pi),
+            self._omega + delta_omega_avg * self.cfg.dt,
+            delta_r_avg,
+            delta_v_avg,
+            delta_theta_avg,
+            delta_alpha_avg,
+            delta_omega_avg,
         )
 
     def step(
@@ -221,14 +244,12 @@ class HopfNetworkController:
             self._v,
             self._theta,
             self._alpha,
-            self._xi,
             self._omega,
-            self._d_r,
-            self._d_v,
-            self._d_theta,
-            self._d_alpha,
-            self._d_xi,
-            self._d_omega,
+            self._delta_r,
+            self._delta_v,
+            self._delta_theta,
+            self._delta_alpha,
+            self._delta_omega,
         ) = self._integrate(mu, w, w_max, omega_cmd)
 
     @property
@@ -240,17 +261,17 @@ class HopfNetworkController:
         return torch.remainder(self._theta + self._alpha, 2 * math.pi)
 
     @property
-    def xi(self) -> torch.Tensor:
-        return self._xi
+    def omega(self) -> torch.Tensor:
+        return self._omega
 
     @property
-    def d_r(self) -> torch.Tensor:
-        return self._d_r
+    def delta_r(self) -> torch.Tensor:
+        return self._delta_r
 
     @property
-    def d_phi(self) -> torch.Tensor:
-        return self._d_theta + self._d_alpha
+    def delta_phi(self) -> torch.Tensor:
+        return self._delta_theta + self._delta_alpha
 
     @property
-    def d_xi(self) -> torch.Tensor:
-        return self._d_xi
+    def delta_omega(self) -> torch.Tensor:
+        return self._delta_omega

@@ -27,51 +27,69 @@ def parse_args():
         "--dt",
         type=float,
         default=0.02,
-        help="Controller update rate in seconds. Controls the simulation timestep. Defaults to 0.02 s",
+        help="Controller update rate in seconds. Controls the simulation timestep. Smaller values = smoother but more computation. Defaults to 0.02 s",
     )
     parser.add_argument(
         "--integration-method",
         type=str,
         choices=("heun", "rk4"),
         default="heun",
-        help="Numerical integration method for controller state estimation. Defaults to 'euler'",
+        help="Numerical method for integrating oscillator states. RK4 is more accurate, Heun is faster. Defaults to 'heun'",
     )
     parser.add_argument(
         "--a",
         type=float,
         default=32,
-        help="Convergence factor mean for the controller. Higher values make the system converge faster. Defaults to 32",
+        help="Convergence gain for oscillator phase/amplitude error correction. Higher = faster locking to desired gait. Defaults to 32",
     )
     parser.add_argument(
         "--default-alpha",
         type=float,
         default=(0, math.pi, math.pi, 0, 0, math.pi),
         nargs="+",
-        help="Default phase (in radians) for each oscillator. Defaults to (0, math.pi, math.pi, 0, 0, math.pi), e.g. tripod gait of a 6-legged robot",
+        help="Initial oscillator phase offsets. Defaults to (0, math.pi, math.pi, 0, 0, math.pi), e.g. tripod gait of a 6-legged robot",
     )
     parser.add_argument(
         "--mu-min",
         type=float,
-        default=1.0,
-        help="Lower bound for amplitude modulation parameter. Defaults to 1.0",
+        default=0.0,
+        help="Minimum allowed amplitude modulation. Defaults to 1.0",
     )
     parser.add_argument(
         "--mu-max",
         type=float,
-        default=4.0,
-        help="Upper bound for amplitude modulation parameter. Defaults to 4.0",
+        default=2.0,
+        help="Maximum allowed amplitude modulation. Defaults to 3.0",
     )
     parser.add_argument(
         "--w-min",
         type=float,
         default=0.0,
-        help="Lower bound for frequency modulation parameter. Defaults to 0.0",
+        help="Minimum oscillator frequency modulation (rad/s). Defaults to 0.0",
     )
     parser.add_argument(
         "--w-max",
         type=float,
-        default=1.6 * math.pi,
-        help="Upper bound for frequency modulation parameter. In real scenarios, this is should be modulated externally. Defaults to 1.6 * math.pi",
+        default=math.pi,
+        help="Maximum oscillator frequency modulation (rad/s). In real scenarios, this is should be modulated externally. Defaults to math.pi",
+    )
+    parser.add_argument(
+        "--omega-cmd-min",
+        type=float,
+        default=-math.pi,
+        help="Minimum robot heading change command (rad/s). Defaults to -math.pi",
+    )
+    parser.add_argument(
+        "--omega-cmd-max",
+        type=float,
+        default=math.pi,
+        help="Maximum robot heading change command (rad/s). Defaults to math.pi",
+    )
+    parser.add_argument(
+        "--omega-cmd-tau",
+        type=float,
+        default=0.25,
+        help="Time constant of heading command low-pass filter. Smooths sharp turn commands. Defaults to 0.25 s",
     )
     parser.add_argument(
         "--self-weight",
@@ -95,31 +113,31 @@ def parse_args():
         "--threshold",
         type=float,
         default=0.0,
-        help="Minimal phase difference (in radians) to consider oscillators as belonging to the same group. Defaults to 0.0 rad",
+        help="Minimum phase difference (in radians) to consider oscillators as belonging to the same group. Defaults to 0.0 rad",
     )
     parser.add_argument(
         "--device",
         type=str,
         choices=("cpu", "cuda"),
         default="cpu",
-        help="Device to perform computations on (CPU or GPU). Defaults to 'cpu'",
+        help="omputing device for simulation/training. Use `cuda` for GPU acceleration. Defaults to 'cpu'",
     )
     parser.add_argument(
         "--simulation-time",
         type=float,
         default=10.0,
-        help="Total simulation time in seconds. Default to 10.0 s",
+        help="Duration of the CPG simulation in seconds. Default to 10.0 s",
     )
     parser.add_argument(
         "--enable-random-modulation",
         action="store_true",
-        help="Enables random modulation applied to the controller when set. Disabled by default",
+        help="Adds random variation to CPG parameters for robustness testing. Disabled by default",
     )
     parser.add_argument(
         "--filename",
         type=str,
         default=None,
-        help="Filename to save image",
+        help="Output filename for saving simulation plots/images",
     )
 
     return parser.parse_args()
@@ -143,36 +161,44 @@ def make_command(enable_random_modulation: bool, net_size: int, device: str):
 def plot_hist(
     simualtion_time: float,
     r_hist: torch.Tensor,
+    delta_r_hist: torch.Tensor,
     phi_hist: torch.Tensor,
-    d_r_hist: torch.Tensor,
-    d_phi_hist: torch.Tensor,
+    delta_phi_hist: torch.Tensor,
+    omega_hist: torch.Tensor,
+    delta_omega_hist: torch.Tensor,
     w_max: float,
+    heading: float,
     enable_random_modulation: bool,
     filename: str,
 ):
     x_axis = torch.linspace(0, simualtion_time, r_hist.shape[0])
     num_osc = r_hist.shape[1]
 
-    mosaic = (("r", "d_r"), ("phi", "d_phi"))
+    mosaic = (("r", "delta_r"), ("phi", "delta_phi"), ("omega", "delta_omega"))
     fig, axes = plt.subplot_mosaic(mosaic, figsize=(20, 10), layout="constrained")
 
     var_dict = {
         "r": ("Amplitude", "$r$", r_hist, axes["r"]),
+        "delta_r": ("Velocity", "$\\dot{r}$", delta_r_hist, axes["delta_r"]),
         "phi": ("Phase", "$\\phi$", phi_hist, axes["phi"]),
-        "d_r": ("Velocity", "$\\dot{r}$", d_r_hist, axes["d_r"]),
-        "d_phi": ("Frequency", "$\\dot{\\phi}$", d_phi_hist, axes["d_phi"]),
+        "delta_phi": ("Frequency", "$\\dot{\\phi}$", delta_phi_hist, axes["delta_phi"]),
+        "omega": ("Heading", "$\\omega$", omega_hist, axes["omega"]),
+        "delta_omega": ("Heading frequency", "$\\dot{\\omega}$", delta_omega_hist, axes["delta_omega"]),
     }
 
     for var_name, (title, label, data, ax) in var_dict.items():
-        for i in range(num_osc):
-            ax.plot(x_axis, data[:, i], label=f"{label}[{i}]")
+        if var_name in ("omega", "delta_omega"):
+            ax.plot(x_axis, data[:], label=f"{label}")
+        else:
+            for i in range(num_osc):
+                ax.plot(x_axis, data[:, i], label=f"{label}[{i}]")
         ax.set_title(title)
         ax.set_xlabel("Time (s)")
         ax.legend(fontsize="small", ncol=2)
         ax.grid(True)
 
     fig.suptitle(
-        f"CPG controller simulation (modulation: {enable_random_modulation}, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
+        f"CPG controller simulation (modulation: {enable_random_modulation}, heading: {heading / math.pi:.6f}$\\pi$ rad, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
         fontsize=16,
     )
 
@@ -199,6 +225,9 @@ def main():
         mu_min=args_cli.mu_min,
         mu_max=args_cli.mu_max,
         w_min=args_cli.w_min,
+        omega_cmd_min=args_cli.omega_cmd_min,
+        omega_cmd_max=args_cli.omega_cmd_max,
+        omega_cmd_tau=args_cli.omega_cmd_tau,
         coupling_cfg={
             "self_weight": args_cli.self_weight,
             "in_group_weight": args_cli.in_group_weight,
@@ -214,9 +243,11 @@ def main():
     num_iterations = int(args_cli.simulation_time / cfg.dt)
 
     r_hist = torch.empty((num_iterations, controller.net_size), device="cpu")
+    delta_r_hist = torch.empty_like(r_hist)
     phi_hist = torch.empty_like(r_hist)
-    d_r_hist = torch.empty_like(r_hist)
-    d_phi_hist = torch.empty_like(phi_hist)
+    delta_phi_hist = torch.empty_like(phi_hist)
+    omega_hist = torch.empty((num_iterations, 1), device="cpu")
+    delta_omega_hist = torch.empty_like(omega_hist)
 
     exec_time = 0
     for i in range(num_iterations):
@@ -227,9 +258,11 @@ def main():
         )
 
         r_hist[i] = controller.r.detach().squeeze(0).cpu()
+        delta_r_hist[i] = controller.delta_r.detach().squeeze(0).cpu()
         phi_hist[i] = controller.phi.detach().squeeze(0).cpu()
-        d_r_hist[i] = controller.d_r.detach().squeeze(0).cpu()
-        d_phi_hist[i] = controller.d_phi.detach().squeeze(0).cpu()
+        delta_phi_hist[i] = controller.delta_phi.detach().squeeze(0).cpu()
+        omega_hist[i] = controller.omega.detach().squeeze(0).cpu()
+        delta_omega_hist[i] = controller.delta_omega.detach().squeeze(0).cpu()
 
         start_time = time.time_ns()
         controller.step(mu, w, w_max, omega_cmd)
@@ -244,10 +277,13 @@ def main():
     plot_hist(
         simualtion_time=args_cli.simulation_time,
         r_hist=r_hist,
+        delta_r_hist=delta_r_hist,
         phi_hist=phi_hist,
-        d_r_hist=d_r_hist,
-        d_phi_hist=d_phi_hist,
+        delta_phi_hist=delta_phi_hist,
+        omega_hist=omega_hist,
+        delta_omega_hist=delta_omega_hist,
         w_max=w_max.item(),
+        heading=omega_cmd.item(),
         enable_random_modulation=args_cli.enable_random_modulation,
         filename=args_cli.filename,
     )
