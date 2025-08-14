@@ -1,5 +1,6 @@
 import math
-from collections.abc import Sequence
+
+import torch
 
 from isaaclab.utils import configclass
 
@@ -10,17 +11,14 @@ class HopfNetworkControllerCfg:
 
     @configclass
     class InitialStateCfg:
-        alpha: Sequence[float] = (0, math.pi, math.pi, 0, 0, math.pi)
-        """Oscillators default phase offsets in radians"""
+        alpha: torch.Tensor = torch.tensor((0, math.pi, math.pi, 0, 0, math.pi))
+        """Oscillators default phase offsets in radians to randomly spread either one specific or several gait patterns across environments."""
 
     integration_method: str = "heun"
     """Numerical integration method for controller state estimation. Available options: 'heun' (improved Euler's method), 'rk4'. For reference, 'rk4' works ~4x times slower but provides smoother solution"""
 
     a: float = 32
     """Convergence factor. Higher values make the system converge faster. Best values with an appropriate overshoot ~5%: heun - 32; rk4 - 189"""
-
-    default_alpha: Sequence[float] = (0, math.pi, math.pi, 0, 0, math.pi)
-    """Oscillators default phase offsets in radians"""
 
     mu_min: float = 0.0
     mu_max: float = 2.0
@@ -51,9 +49,12 @@ class HopfNetworkControllerCfg:
         if any(
             (
                 self.a <= 0,
-                self.omega_cmd_tau <= 0,
                 self.mu_min > self.mu_max,
+                self.mu_min < 0,
+                self.mu_max < 0,
                 self.omega_cmd_min > self.omega_cmd_max,
+                self.omega_cmd_tau <= 0,
+                self.init_state.alpha.shape.__len__() > 1,
             )
         ):
             raise ValueError("Invalid configuration")

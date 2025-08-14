@@ -43,7 +43,7 @@ def parse_args():
         help="Convergence gain for oscillator phase/amplitude error correction. Higher = faster locking to desired gait. Defaults to 32",
     )
     parser.add_argument(
-        "--default-alpha",
+        "--init-state-alpha",
         type=float,
         default=(0, math.pi, math.pi, 0, 0, math.pi),
         nargs="+",
@@ -221,10 +221,9 @@ def main():
         print(f"{key:25} : {value}")
 
     cfg = HopfNetworkControllerCfg(
-        dt=args_cli.dt,
         integration_method=args_cli.integration_method,
         a=args_cli.a,
-        default_alpha=args_cli.default_alpha,
+        init_state=HopfNetworkControllerCfg.InitialStateCfg(torch.tensor(args_cli.init_state_alpha)),
         mu_min=args_cli.mu_min,
         mu_max=args_cli.mu_max,
         w_min=args_cli.w_min,
@@ -238,12 +237,12 @@ def main():
             "threshold": args_cli.threshold,
         },
     )
-    controller = HopfNetworkController(cfg, num_envs=1, device=args_cli.device)
+    controller = HopfNetworkController(cfg, dt=args_cli.dt, num_envs=1, device=args_cli.device)
 
     w_max = (
         torch.ones((controller.num_envs, 1), device=controller.device) * args_cli.w_max
     )
-    num_iterations = int(args_cli.simulation_time / cfg.dt)
+    num_iterations = int(args_cli.simulation_time / controller.dt)
 
     r_hist = torch.empty((num_iterations, controller.net_size), device="cpu")
     delta_r_hist = torch.empty_like(r_hist)
@@ -276,7 +275,7 @@ def main():
     exec_time /= num_iterations
 
     print(
-        f"\n[✓] Simulation ({num_iterations} steps, dt={cfg.dt}s) completed. Average controller step time: {exec_time:.3f} ms"
+        f"\n[✓] Simulation ({num_iterations} steps, dt={controller.dt}s) completed. Average controller step time: {exec_time:.3f} ms"
     )
 
     plot_hist(

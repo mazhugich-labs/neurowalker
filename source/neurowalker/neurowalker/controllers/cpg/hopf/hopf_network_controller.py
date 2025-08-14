@@ -4,7 +4,6 @@ from collections.abc import Callable
 import torch
 
 from .hopf_network_controller_cfg import HopfNetworkControllerCfg
-from neurowalker.controllers.cpg.utils import calc_psi, calc_m
 
 
 class HopfNetworkController:
@@ -19,29 +18,7 @@ class HopfNetworkController:
         self.dt = dt
         self.num_envs = num_envs
         self.device = device
-
-        # Default alpha is the canonical phase offsets (kept FIXED)
-        # shape: [1, net_size]
-        self._default_alpha = torch.tensor(
-            self.cfg.init_state.alpha, device=self.device
-        ).unsqueeze(0)
-
-        # Figure out network size (number of oscillators)
-        self.net_size: int = self._default_alpha.shape[1]
-
-        # psi is computed from default_alpha and kept fixed for robustness.
-        # shape: [net_size, net_size]
-        self._psi = calc_psi(self._default_alpha)
-
-        # coupling matrix m is computed once from psi and config (kept fixed)
-        self._m = calc_m(
-            self._psi,
-            self.cfg.coupling_cfg["self_weight"],
-            self.cfg.coupling_cfg["in_group_weight"],
-            self.cfg.coupling_cfg["of_group_weight"],
-            self.cfg.coupling_cfg["threshold"],
-            self.device,
-        )
+        self.net_size: int = self.cfg.init_state.alpha.shape[-1]
 
         self._integrate: Callable[
             [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
@@ -56,13 +33,33 @@ class HopfNetworkController:
                 f"Invalid integration method: {self.cfg.integration_method}"
             )
 
+        self.update_init_state(self.cfg.init_state.alpha)
         self.reset()
+
+    def update_init_state(self, alpha: torch.Tensor):
+        if alpha.shape.__len__() > 1:
+            raise ValueError(
+                "Incorrect init state shape. Shape must be [number of gaits, network size]"
+            )
+
+        self.cfg.init_state.alpha = alpha.unsqueeze(0).to(self.device)
+
+        self._psi = self.cfg.init_state.alpha.T - self.cfg.init_state.alpha
+
+        self._m = torch.full_like(self._psi, self.cfg.coupling_cfg["of_group_weight"])
+        self._m[
+            (self._psi >= -self.cfg.coupling_cfg["threshold"])
+            & (self._psi <= self.cfg.coupling_cfg["threshold"])
+        ] = self.cfg.coupling_cfg["in_group_weight"]
+        self._m[range(self.net_size), range(self.net_size)] = self.cfg.coupling_cfg[
+            "self_weight"
+        ]
 
     def reset(self) -> None:
         self._r = torch.zeros(self.num_envs, self.net_size, device=self.device)
         self._v = torch.zeros(self.num_envs, self.net_size, device=self.device)
         self._theta = torch.zeros(self.num_envs, self.net_size, device=self.device)
-        self._alpha = self._default_alpha.repeat(self.num_envs, 1)
+        self._alpha = self.cfg.init_state.alpha.repeat(self.num_envs, 1)
         self._omega = torch.zeros(self.num_envs, 1, device=self.device)
         self._delta_r = torch.zeros(self.num_envs, self.net_size, device=self.device)
         self._delta_v = torch.zeros(self.num_envs, self.net_size, device=self.device)
