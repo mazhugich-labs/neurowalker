@@ -3,7 +3,7 @@ import torch
 
 def calc_psi(default_alpha: torch.Tensor) -> torch.Tensor:
     """Calculate inter-oscillator phase offset matrix"""
-    return default_alpha.T - default_alpha
+    return default_alpha.unsqueeze(1) - default_alpha.unsqueeze(0)
 
 
 def calc_m(

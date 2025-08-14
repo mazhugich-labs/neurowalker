@@ -52,13 +52,13 @@ def parse_args():
     parser.add_argument(
         "--mu-min",
         type=float,
-        default=0.0,
+        default=1.0,
         help="Minimum allowed amplitude modulation. Defaults to 1.0",
     )
     parser.add_argument(
         "--mu-max",
         type=float,
-        default=2.0,
+        default=3.0,
         help="Maximum allowed amplitude modulation. Defaults to 3.0",
     )
     parser.add_argument(
@@ -88,8 +88,8 @@ def parse_args():
     parser.add_argument(
         "--omega-cmd-tau",
         type=float,
-        default=0.25,
-        help="Time constant of heading command low-pass filter. Smooths sharp turn commands. Defaults to 0.25 s",
+        default=0.05,
+        help="Time constant of heading command low-pass filter. Smooths sharp turn commands. Defaults to 0.5 s",
     )
     parser.add_argument(
         "--self-weight",
@@ -148,7 +148,7 @@ def make_command(enable_random_modulation: bool, net_size: int, device: str):
         return (
             torch.rand((1, net_size), device=device) * 2 - 1,
             torch.rand((1, net_size), device=device) * 2 - 1,
-            torch.rand((1, 1), device=device) * 2 - 1,
+            torch.ones((1, 1), device=device),
         )
 
     return (
@@ -165,9 +165,9 @@ def plot_hist(
     phi_hist: torch.Tensor,
     delta_phi_hist: torch.Tensor,
     omega_hist: torch.Tensor,
+    omega_cmd_hist: torch.Tensor,
     delta_omega_hist: torch.Tensor,
     w_max: float,
-    heading: float,
     enable_random_modulation: bool,
     filename: str,
 ):
@@ -182,12 +182,15 @@ def plot_hist(
         "delta_r": ("Velocity", "$\\dot{r}$", delta_r_hist, axes["delta_r"]),
         "phi": ("Phase", "$\\phi$", phi_hist, axes["phi"]),
         "delta_phi": ("Frequency", "$\\dot{\\phi}$", delta_phi_hist, axes["delta_phi"]),
-        "omega": ("Heading", "$\\omega$", omega_hist, axes["omega"]),
+        "omega": ("Heading", ("$\\omega$", "$\\omega_{cmd}$"), (omega_hist, omega_cmd_hist), axes["omega"]),
         "delta_omega": ("Heading frequency", "$\\dot{\\omega}$", delta_omega_hist, axes["delta_omega"]),
     }
 
     for var_name, (title, label, data, ax) in var_dict.items():
-        if var_name in ("omega", "delta_omega"):
+        if var_name == "omega":
+            ax.plot(x_axis, data[0][:], label=f"{label[0]}")
+            ax.plot(x_axis, data[1][:], label=f"{label[1]}")
+        elif var_name == "delta_omega":
             ax.plot(x_axis, data[:], label=f"{label}")
         else:
             for i in range(num_osc):
@@ -198,7 +201,7 @@ def plot_hist(
         ax.grid(True)
 
     fig.suptitle(
-        f"CPG controller simulation (modulation: {enable_random_modulation}, heading: {heading / math.pi:.6f}$\\pi$ rad, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
+        f"CPG controller simulation (modulation: {enable_random_modulation}, w_max: {w_max / math.pi:.6f}$\\pi$ rad/s)",
         fontsize=16,
     )
 
@@ -248,6 +251,7 @@ def main():
     delta_phi_hist = torch.empty_like(phi_hist)
     omega_hist = torch.empty((num_iterations, 1), device="cpu")
     delta_omega_hist = torch.empty_like(omega_hist)
+    omega_cmd_hist = torch.empty_like(omega_hist)
 
     exec_time = 0
     for i in range(num_iterations):
@@ -263,6 +267,7 @@ def main():
         delta_phi_hist[i] = controller.delta_phi.detach().squeeze(0).cpu()
         omega_hist[i] = controller.omega.detach().squeeze(0).cpu()
         delta_omega_hist[i] = controller.delta_omega.detach().squeeze(0).cpu()
+        omega_cmd_hist[i] = omega_cmd.detach().squeeze(0).cpu() * math.pi
 
         start_time = time.time_ns()
         controller.step(mu, w, w_max, omega_cmd)
@@ -281,9 +286,9 @@ def main():
         phi_hist=phi_hist,
         delta_phi_hist=delta_phi_hist,
         omega_hist=omega_hist,
+        omega_cmd_hist=omega_cmd_hist,
         delta_omega_hist=delta_omega_hist,
         w_max=w_max.item(),
-        heading=omega_cmd.item(),
         enable_random_modulation=args_cli.enable_random_modulation,
         filename=args_cli.filename,
     )

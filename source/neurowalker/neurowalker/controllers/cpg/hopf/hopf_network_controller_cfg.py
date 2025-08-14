@@ -8,8 +8,10 @@ from isaaclab.utils import configclass
 class HopfNetworkControllerCfg:
     """Configuration for Hopf Network Controller"""
 
-    dt: float = 0.02
-    """Controller update rate in seconds"""
+    @configclass
+    class InitialStateCfg:
+        alpha: Sequence[float] = (0, math.pi, math.pi, 0, 0, math.pi)
+        """Oscillators default phase offsets in radians"""
 
     integration_method: str = "heun"
     """Numerical integration method for controller state estimation. Available options: 'heun' (improved Euler's method), 'rk4'. For reference, 'rk4' works ~4x times slower but provides smoother solution"""
@@ -42,10 +44,12 @@ class HopfNetworkControllerCfg:
     }
     """Coupling configuration defines how strongly oscillators influence each other. Coupling matrix is calculated from the 'default_alpha'"""
 
+    init_state: InitialStateCfg = InitialStateCfg()
+    """Initial state of the HopfNetworkController object. Defaults to oscillators phase offsets corresponding to tripod gait"""
+
     def __post_init__(self):
         if any(
             (
-                self.dt <= 0,
                 self.a <= 0,
                 self.omega_cmd_tau <= 0,
                 self.mu_min > self.mu_max,

@@ -1,2 +1,3 @@
 from .cpg import *
-from .ik import *
+from .morph import *
+from .kinematics import *

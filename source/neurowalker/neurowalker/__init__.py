@@ -12,3 +12,12 @@ from .tasks import *
 
 # Register custom modules
 from .controllers import *
+
+import os
+
+# Conveniences to other module directories via relative paths
+ASSETS_EXT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+"""Path to the extension source directory."""
+
+ASSETS_DATA_DIR = os.path.join(ASSETS_EXT_DIR, "assets", "data")
+"""Path to the extension data directory."""

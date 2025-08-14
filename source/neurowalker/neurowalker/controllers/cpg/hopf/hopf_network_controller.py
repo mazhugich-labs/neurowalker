@@ -13,16 +13,17 @@ class HopfNetworkController:
     cfg: HopfNetworkControllerCfg
 
     def __init__(
-        self, cfg: HopfNetworkControllerCfg, num_envs: int, device: str
+        self, cfg: HopfNetworkControllerCfg, dt: float, num_envs: int, device: str
     ) -> None:
         self.cfg = cfg
+        self.dt = dt
         self.num_envs = num_envs
         self.device = device
 
         # Default alpha is the canonical phase offsets (kept FIXED)
         # shape: [1, net_size]
         self._default_alpha = torch.tensor(
-            self.cfg.default_alpha, device=self.device
+            self.cfg.init_state.alpha, device=self.device
         ).unsqueeze(0)
 
         # Figure out network size (number of oscillators)
@@ -73,19 +74,9 @@ class HopfNetworkController:
         )
         self._delta_omega = torch.zeros(self.num_envs, 1, device=self.device)
 
-    def _fit_mu(self, mu: torch.Tensor) -> torch.Tensor:
-        """Fit amplitude modulation parameter from [-1, 1] to [self.cfg.mu_min, self.cfg.mu_max]"""
-        return self.cfg.mu_min + (mu + 1) / 2 * (self.cfg.mu_max - self.cfg.mu_min)
-
-    def _fit_w(self, w: torch.Tensor, w_max: torch.Tensor) -> torch.Tensor:
-        """Fit frequency modulation parameter from [-1, 1] to [self.cfg.w_min, w_max]"""
-        return self.cfg.w_min + (w + 1) / 2 * (w_max - self.cfg.w_min)
-
-    def _fit_omega_cmd(self, omega_cmd: torch.Tensor) -> torch.Tensor:
-        """Fit robot heading modulation parameter"""
-        return self.cfg.omega_cmd_min + (omega_cmd + 1) / 2 * (
-            self.cfg.omega_cmd_max - self.cfg.omega_cmd_min
-        )
+    @staticmethod
+    def _verify_input_bounds(cmds: tuple[torch.Tensor]):
+        return any(cmd.min().item() < -1 or cmd.max().item() > 1 for cmd in cmds)
 
     def _fit_modulation_params(
         self,
@@ -94,6 +85,10 @@ class HopfNetworkController:
         w_max: torch.Tensor,
         omega_cmd: torch.Tensor,
     ):
+        """Fit morphology parameters into configuration specified bounds"""
+        if self._verify_input_bounds((mu, w, omega_cmd)):
+            raise ValueError("Modulation parameters out of bounds (must be in [-1, 1])")
+
         return (
             self.cfg.mu_min + (mu + 1) / 2 * (self.cfg.mu_max - self.cfg.mu_min),
             self.cfg.w_min + (w + 1) / 2 * (w_max - self.cfg.w_min),
@@ -122,13 +117,15 @@ class HopfNetworkController:
     ) -> tuple[torch.Tensor]:
         """Compute state derivatives"""
         f_mu, f_w, f_omega_cmd = self._fit_modulation_params(mu, w, w_max, omega_cmd)
+
         delta_r = v
         delta_v = self.cfg.a**2 / 4 * (f_mu - r) - self.cfg.a * v
         delta_theta = f_w
         delta_alpha = w_max / 2 + self._calc_coupling_term(r, alpha)
 
-        # First-order low-pass/follower filter for robot heading
-        delta_omega = (f_omega_cmd - omega) / self.cfg.omega_cmd_tau
+        # First-order critically damped low-pass/follower filter with time constant tau aware of controller's update rate dt
+        alpha = 1 - math.exp(-self.dt / self.cfg.omega_cmd_tau)
+        delta_omega = (f_omega_cmd - omega) / alpha
 
         return delta_r, delta_v, delta_theta, delta_alpha, delta_omega
 
@@ -153,11 +150,11 @@ class HopfNetworkController:
         delta_omega_avg = (self._delta_omega + delta_omega2) / 2
 
         return (
-            self._r + delta_r_avg * self.cfg.dt,
-            self._v + delta_v_avg * self.cfg.dt,
-            torch.remainder(self._theta + delta_theta_avg * self.cfg.dt, 2 * math.pi),
-            torch.remainder(self._alpha + delta_alpha_avg * self.cfg.dt, 2 * math.pi),
-            self._omega + delta_omega_avg * self.cfg.dt,
+            self._r + delta_r_avg * self.dt,
+            self._v + delta_v_avg * self.dt,
+            torch.remainder(self._theta + delta_theta_avg * self.dt, 2 * math.pi),
+            torch.remainder(self._alpha + delta_alpha_avg * self.dt, 2 * math.pi),
+            self._omega + delta_omega_avg * self.dt,
             delta_r_avg,
             delta_v_avg,
             delta_theta_avg,
@@ -179,28 +176,28 @@ class HopfNetworkController:
             )
         )
         r2, v2, alpha2, omega2 = (
-            self._r + delta_r1 * self.cfg.dt / 2,
-            self._v + delta_v1 * self.cfg.dt / 2,
-            self._alpha + delta_alpha1 * self.cfg.dt / 2,
-            self._omega + delta_omega1 * self.cfg.dt / 2,
+            self._r + delta_r1 * self.dt / 2,
+            self._v + delta_v1 * self.dt / 2,
+            self._alpha + delta_alpha1 * self.dt / 2,
+            self._omega + delta_omega1 * self.dt / 2,
         )
         delta_r2, delta_v2, delta_theta2, delta_alpha2, delta_omega2 = (
             self._calc_delta_state(r2, v2, alpha2, omega2, mu, w, w_max, omega_cmd)
         )
         r3, v3, alpha3, omega3 = (
-            self._r + delta_r2 * self.cfg.dt / 2,
-            self._v + delta_v2 * self.cfg.dt / 2,
-            self._alpha + delta_alpha2 * self.cfg.dt / 2,
-            self._omega + delta_omega2 * self.cfg.dt / 2,
+            self._r + delta_r2 * self.dt / 2,
+            self._v + delta_v2 * self.dt / 2,
+            self._alpha + delta_alpha2 * self.dt / 2,
+            self._omega + delta_omega2 * self.dt / 2,
         )
         delta_r3, delta_v3, delta_theta3, delta_alpha3, delta_omega3 = (
             self._calc_delta_state(r3, v3, alpha3, omega3, mu, w, w_max, omega_cmd)
         )
         r4, v4, alpha4, omega4 = (
-            self._r + delta_r3 * self.cfg.dt,
-            self._v + delta_v3 * self.cfg.dt,
-            self._alpha + delta_alpha3 * self.cfg.dt,
-            self._omega + delta_omega3 * self.cfg.dt,
+            self._r + delta_r3 * self.dt,
+            self._v + delta_v3 * self.dt,
+            self._alpha + delta_alpha3 * self.dt,
+            self._omega + delta_omega3 * self.dt,
         )
         delta_r4, delta_v4, delta_theta4, delta_alpha4, delta_omega4 = (
             self._calc_delta_state(r4, v4, alpha4, omega4, mu, w, w_max, omega_cmd)
@@ -219,11 +216,11 @@ class HopfNetworkController:
         ) / 6
 
         return (
-            self._r + delta_r_avg * self.cfg.dt,
-            self._v + delta_v_avg * self.cfg.dt,
-            torch.remainder(self._theta + delta_theta_avg * self.cfg.dt, 2 * math.pi),
-            torch.remainder(self._alpha + delta_alpha_avg * self.cfg.dt, 2 * math.pi),
-            self._omega + delta_omega_avg * self.cfg.dt,
+            self._r + delta_r_avg * self.dt,
+            self._v + delta_v_avg * self.dt,
+            torch.remainder(self._theta + delta_theta_avg * self.dt, 2 * math.pi),
+            torch.remainder(self._alpha + delta_alpha_avg * self.dt, 2 * math.pi),
+            self._omega + delta_omega_avg * self.dt,
             delta_r_avg,
             delta_v_avg,
             delta_theta_avg,
@@ -237,7 +234,7 @@ class HopfNetworkController:
         w: torch.Tensor,
         w_max: torch.Tensor,
         omega_cmd: float | torch.Tensor,
-    ) -> None:
+    ) -> dict[str, torch.Tensor]:
         """Perform one controller step"""
         (
             self._r,
@@ -251,6 +248,26 @@ class HopfNetworkController:
             self._delta_alpha,
             self._delta_omega,
         ) = self._integrate(mu, w, w_max, omega_cmd)
+
+        return {
+            "r": self.r,
+            "delta_r": self.delta_r,
+            "phi": self.phi,
+            "delta_phi": self.delta_phi,
+            "omega": self.omega,
+            "delta_omega": self.delta_omega,
+        }
+
+    @property
+    def state(self):
+        return {
+            "r": self.r,
+            "delta_r": self.delta_r,
+            "phi": self.phi,
+            "delta_phi": self.delta_phi,
+            "omega": self.omega,
+            "delta_omega": self.delta_omega,
+        }
 
     @property
     def r(self) -> torch.Tensor:
