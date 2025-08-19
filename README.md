@@ -189,9 +189,9 @@ filename                  : hopf_network_controller_random_modulation
 
 #### Example of Images Produced by Hopf Network Controller (no/random modulation)
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_no_modulation.png "Hopf Network Controller no modulation")
+![low_level_hop_net_controller](source/neurowalker/docs/readme/images/hopf_network_controller_no_modulation.png "Hopf Network Controller no modulation")
 
-![low_level_hop_net_controller](source/neurowalker/docs/images/readme/hopf_network_controller_random_modulation.png "Hopf Network Controller random modulation")
+![low_level_hop_net_controller](source/neurowalker/docs/readme/images/hopf_network_controller_random_modulation.png "Hopf Network Controller random modulation")
 
 #### Implementation
 
@@ -203,9 +203,9 @@ Kinematics Controller takes CPG state and morphological parameters (leg stride, 
 
 #### Example of Images Produced by Kinematics Controller (no/random modulation)
 
-![low_level_kinematics_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_no_modulation.png "Kinematics Controller no modulation")
+![low_level_kinematics_controller](source/neurowalker/docs/readme/images/inverse_kinematics_controller_no_modulation.png "Kinematics Controller no modulation")
 
-![low_level_kinematics_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_random_modulation.png "Kinematics Controller random modulation")
+![low_level_kinematics_controller](source/neurowalker/docs/readme/images/inverse_kinematics_controller_random_modulation.png "Kinematics Controller random modulation")
 
 #### Implementation
 
@@ -225,7 +225,7 @@ IsaacSim simulation of NeuroWalker locomotion via implemented controllers pipeli
 
 #### Example of Simulation
 
-![isaacsim_simulation_controller_pipeline](source/neurowalker/docs/videos/isaacsim_simulation_no_rl.gif)
+![isaacsim_simulation_controller_pipeline](source/neurowalker/docs/readme/gifs/isaacsim_simulation_no_rl.gif)
 
 **Blue** arrow points to the commanded movement direction, while **yellow** shows actual direction.
 
