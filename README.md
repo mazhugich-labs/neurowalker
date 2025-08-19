@@ -225,7 +225,7 @@ IsaacSim simulation of NeuroWalker locomotion via implemented controllers pipeli
 
 #### Example of Simulation
 
-![isaacsim_simulation_controller_pipeline](source/neurowalker/docs/readme/gifs/isaacsim_simulation_no_rl.gif)
+![isaacsim_simulation_controller_pipeline](source/neurowalker/docs/readme/gifs/isaacsim_simulation_no_rl.gif "IsaacSim NeuroWalker locomotion simulation")
 
 **Blue** arrow points to the commanded movement direction, while **yellow** shows actual direction.
 
