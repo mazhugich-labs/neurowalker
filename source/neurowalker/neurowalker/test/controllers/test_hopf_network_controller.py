@@ -59,7 +59,7 @@ def parse_args():
         "--mu-max",
         type=float,
         default=3.0,
-        help="Maximum allowed amplitude modulation. Defaults to 3.0",
+        help="Maximum allowed amplitude modulation. Defaults to 4.0",
     )
     parser.add_argument(
         "--w-min",
@@ -182,8 +182,18 @@ def plot_hist(
         "delta_r": ("Velocity", "$\\dot{r}$", delta_r_hist, axes["delta_r"]),
         "phi": ("Phase", "$\\phi$", phi_hist, axes["phi"]),
         "delta_phi": ("Frequency", "$\\dot{\\phi}$", delta_phi_hist, axes["delta_phi"]),
-        "omega": ("Heading", ("$\\omega$", "$\\omega_{cmd}$"), (omega_hist, omega_cmd_hist), axes["omega"]),
-        "delta_omega": ("Heading frequency", "$\\dot{\\omega}$", delta_omega_hist, axes["delta_omega"]),
+        "omega": (
+            "Heading",
+            ("$\\omega$", "$\\omega_{cmd}$"),
+            (omega_hist, omega_cmd_hist),
+            axes["omega"],
+        ),
+        "delta_omega": (
+            "Heading frequency",
+            "$\\dot{\\omega}$",
+            delta_omega_hist,
+            axes["delta_omega"],
+        ),
     }
 
     for var_name, (title, label, data, ax) in var_dict.items():
@@ -223,7 +233,6 @@ def main():
     cfg = HopfNetworkControllerCfg(
         integration_method=args_cli.integration_method,
         a=args_cli.a,
-        init_state=HopfNetworkControllerCfg.InitialStateCfg(torch.tensor(args_cli.init_state_alpha)),
         mu_min=args_cli.mu_min,
         mu_max=args_cli.mu_max,
         w_min=args_cli.w_min,
@@ -237,7 +246,13 @@ def main():
             "threshold": args_cli.threshold,
         },
     )
-    controller = HopfNetworkController(cfg, dt=args_cli.dt, num_envs=1, device=args_cli.device)
+    controller = HopfNetworkController(
+        cfg=cfg,
+        init_alpha=torch.tensor(((0, math.pi, math.pi, 0, 0, math.pi),)),
+        dt=args_cli.dt,
+        num_envs=1,
+        device=args_cli.device,
+    )
 
     w_max = (
         torch.ones((controller.num_envs, 1), device=controller.device) * args_cli.w_max

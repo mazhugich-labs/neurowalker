@@ -1,2 +1,6 @@
-from .hopf_network_controller_cfg import HopfNetworkControllerCfg
-from .hopf_network_controller import HopfNetworkController
+from .controller import (
+    HopfNetworkModulationBounds,
+    HopfNetworkGains,
+    HopfNetworkCfg,
+    HopfNetworkController,
+)

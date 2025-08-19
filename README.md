@@ -195,148 +195,43 @@ filename                  : hopf_network_controller_random_modulation
 
 #### Implementation
 
-You can find Hopf Network Controller source code here:
+You can find Hopf Network Controller source code [*here*](source/neurowalker/neurowalker/controllers/cpg/hopf/).
 
-```bash
-.
-└── source
-    └── neurowalker
-        └── neurowalker
-            └── controllers
-                ├── cpg
-                │   ├── hopf_network_controller_cfg.py
-                │   ├── hopf_network_controller.py
-                │   ├── __init__.py
-                │   └── utils.py
-                └── __init__.py
-```
+### Kinematics Controller
 
-### Inverse Kinematics Controller
+Kinematics Controller takes CPG state and morphological parameters (leg stride, robot height, step length, etc.) as inputs and produces target feet positions. Another function takes target foot positions and produces target joint positions.
 
-As for now Inverse Kinematics Controller takes CPG state and morphological parameters (leg stride, robot height, step length, etc.) as inputs and produces target feet positions. In future there will be velocity profile generator.
+#### Example of Images Produced by Kinematics Controller (no/random modulation)
 
-#### Quick Reference Table (new CLI arguments)
+![low_level_kinematics_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_no_modulation.png "Kinematics Controller no modulation")
 
-| Parameter   | Type / Range | Default  | Description (Morphological Context)                                                                    |
-| ----------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------ |
-| `--s-min`   | float, > 0   | `0.05` m | Minimum leg stride length. Controls how short steps can be when reducing gait amplitude.               |
-| `--s-max`   | float, > 0   | `0.1` m  | Maximum leg stride length. Determines the longest horizontal displacement per step.                    |
-| `--h-min`   | float, > 0   | `0.07` m | Minimum body height relative to the ground. Used in crouching or low-clearance modes.                  |
-| `--h-max`   | float, > 0   | `0.15` m | Maximum body height. Allows higher stance for better obstacle clearance.                               |
-| `--d-min`   | float, ≥ 0   | `0.0` m  | Minimum horizontal displacement of the foot during a single step (step size).                          |
-| `--d-max`   | float, ≥ 0   | `0.07` m | Maximum horizontal displacement of the foot during a single step.                                      |
-| `--g-c-min` | float, ≥ 0   | `0.0` m  | Minimum vertical clearance of the foot tip above the ground during swing phase.                        |
-| `--g-c-max` | float, ≥ 0   | `0.07` m | Maximum vertical clearance of the foot tip above the ground during swing phase.                        |
-| `--g-p-min` | float, ≥ 0   | `0.0` m  | Minimum penetration depth of the foot tip into the ground (for soft terrain simulation).               |
-| `--g-p-max` | float, ≥ 0   | `0.02` m | Maximum penetration depth of the foot tip into the ground.                                             |
-| `--mp-tau`  | float, > 0   | `0.25` s | Time constant for low-pass filtering changes to morphological parameters, ensuring smooth transitions. |
-
-#### Example Command to Run the Simulation
-
-```bash
-python source/neurowalker/neurowalker/test/controllers/test_inverse_kinematics_controller.py \
-    --dt 0.025 \
-    --integration-method rk4 \
-    --a 36.5 \
-    --default-alpha 0 3.141592653589793 3.141592653589793 0 0 3.141592653589793 \
-    --mu-min 0.1 \
-    --mu-max 2.8 \
-    --w-min 0.2 \
-    --w-max 2.9 \
-    --omega-cmd-min -2.5 \
-    --omega-cmd-max 2.8 \
-    --omega-cmd-tau 0.3 \
-    --self-weight 0.05 \
-    --in-group-weight 1.3 \
-    --of-group-weight 0.25 \
-    --threshold 0.15 \
-    --s-min 0.055 \
-    --s-max 0.095 \
-    --h-min 0.075 \
-    --h-max 0.14 \
-    --d-min 0.01 \
-    --d-max 0.065 \
-    --g-c-min 0.005 \
-    --g-c-max 0.06 \
-    --g-p-min 0.0 \
-    --g-p-max 0.015 \
-    --mp-tau 0.2 \
-    --device cuda \
-    --simulation-time 12.5 \
-    --enable-random-modulation \
-    --filename inverse_kinematics_controller_random_modulation
-```
-
-This will simulate a tripod gait for 10 seconds, using GPU acceleration (--device cuda) and random modulation parameter variations.
-
-#### Example of Command Line Output
-
-```bash
-[✓] Starting simulation with the following parameters:
-
-dt                        : 0.025
-integration_method        : rk4
-a                         : 36.5
-default_alpha             : [0.0, 3.141592653589793, 3.141592653589793, 0.0, 0.0, 3.141592653589793]
-mu_min                    : 0.1
-mu_max                    : 2.8
-w_min                     : 0.2
-w_max                     : 2.9
-omega_cmd_min             : -2.5
-omega_cmd_max             : 2.8
-omega_cmd_tau             : 0.3
-self_weight               : 0.05
-in_group_weight           : 1.3
-of_group_weight           : 0.25
-threshold                 : 0.15
-s_min                     : 0.055
-s_max                     : 0.095
-h_min                     : 0.075
-h_max                     : 0.14
-d_min                     : 0.01
-d_max                     : 0.065
-g_c_min                   : 0.005
-g_c_max                   : 0.06
-g_p_min                   : 0.0
-g_p_max                   : 0.015
-mp_tau                    : 0.2
-device                    : cuda
-simulation_time           : 12.5
-enable_random_modulation  : True
-filename                  : inverse_kinematics_controller_random_modulation
-
-[✓] Simulation (500 steps, dt=0.025s) completed. Average controller step time: 1.464 ms
-
-[✓] Saving image to: source/neurowalker/docs/images/inverse_kinematics_controller_random_modulation.png
-```
-
-#### Example of Images Produced by Inverse Kinematics Controller (no/random modulation)
-
-![ik_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_no_modulation.png "Inverse Kinematics Controller no modulation")
-
-![ik_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_random_modulation.png "Inverse Kinematics Controller random modulation")
+![low_level_kinematics_controller](source/neurowalker/docs/images/readme/inverse_kinematics_controller_random_modulation.png "Kinematics Controller random modulation")
 
 #### Implementation
 
-You can find Inverse Kinematics Controller source code here:
+You can find Inverse Kinematics Controller source code [*here*](source/neurowalker/neurowalker/controllers/mechanics/kinematics/)
 
-```bash
-.
-└── source
-    └── neurowalker
-        └── neurowalker
-            └── controllers
-                └── ik
-                    ├── __init__.py
-                    ├── inverse_kinematics_controller_cfg.py
-                    └── inverse_kinematics_controller.py
-```
+### Dynamics Controller
 
-## CPG-RL
+- [ ] *TODO*
 
-- [ ] Create IsaacLab direct environment for training
-- [ ] Generate USD model
-- [ ] Start training
+#### Implementation
+
+You can find Inverse Dynamics Controller source code [*here*](source/neurowalker/neurowalker/controllers/mechanics/dynamics/)
+
+### IsaacSim
+
+IsaacSim simulation of NeuroWalker locomotion via implemented controllers pipeline without external modulation. RL is coming soon...
+
+#### Example of Simulation
+
+![isaacsim_simulation_controller_pipeline](source/neurowalker/docs/videos/isaacsim_simulation_no_rl.gif)
+
+**Blue** arrow points to the commanded movement direction, while **yellow** shows actual direction.
+
+#### Implementation
+
+You can find IsaacSim Simulation source code [*here*](source/neurowalker/neurowalker/test/test_isaacsim_neurowalker.py)
 
 ## Acknowledgement
 

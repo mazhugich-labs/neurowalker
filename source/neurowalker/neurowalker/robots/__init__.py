@@ -1,0 +1,1 @@
+from .neurowalker import make_articulation_cfg

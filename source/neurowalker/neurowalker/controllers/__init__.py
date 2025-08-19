@@ -1,3 +1,3 @@
 from .cpg import *
-from .morph import *
-from .kinematics import *
+from .morphology import *
+from .mechanics import *
